@@ -123,5 +123,18 @@ def clean_talk_text(text):
 
 
 def clean_alog_text(text):
-    """Convenience wrapper for aLOG comment cleaning."""
-    return clean_text(text, source="alog")
+    """
+    Light, lossless cleaning for aLOG entries.
+
+    The aLOG is engineering data: signs, decimal points, units, percentages,
+    channel names (H1:ASC-DC6_P) and lists carry the facts. The generic
+    clean_text() strips '-', '.', '%', ':', '_', '/', ',' and single letters,
+    turning "-455" into "455" and "7.343 Hz" into "7 343 Hz", so it must not
+    be used here. Only boilerplate and whitespace are removed.
+    """
+    if not text:
+        return ""
+    text = re.sub(r"Images attached to (this report|this comment|this)", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"Non-image files attached to (this report|this comment|this)", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()

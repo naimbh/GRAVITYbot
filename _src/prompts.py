@@ -10,12 +10,16 @@ Purpose:
         Prompt templates for GRAVITYbot LLM summarization tasks.
 
         - talk_prompt(): Summarizes Zooniverse Talk forum discussions for LIGO scientists
-        - alog_prompt(): Summarizes aLOG engineering posts for citizen scientists
+        - alog_prompt(): Summarizes aLOG posts for Gravity Spy volunteers
+        - alog_prompt_legacy(): The original aLOG prompt, kept for comparison
 """
 
 import json
+import pathlib
 
 import pandas as pd
+
+import alog_index
 
 DATA_DELIMITER = "~~~"
 
@@ -124,9 +128,9 @@ def ligo_prompt(talk_dat0, talk_dat1):
     return talk_prompt(talk_dat0, talk_dat1)
 
 
-def alog_prompt(prior_data, current_data, lab):
+def alog_prompt_legacy(prior_data, current_data, lab):
     """
-    Constructs prompts for summarizing LIGO aLOG engineering posts.
+    Original aLOG prompt, kept for comparison. alog_prompt() below replaces it.
 
     Args:
         prior_data (pandas.DataFrame): aLOG entries from the prior 5-day period.
@@ -182,3 +186,143 @@ For example, if the link's callRep parameter was {template_call_rep} the expecte
     """.strip()
 
     return user_prompt, sys_prompt
+
+
+GLOSSARY_PATH = pathlib.Path(__file__).with_name("volunteer_glossary.md")
+
+
+def _load_glossary():
+    return GLOSSARY_PATH.read_text(encoding="utf-8").strip()
+
+
+def alog_prompt(prior_data, current_data, lab):
+    """
+    Constructs prompts for summarizing LIGO aLOG posts for Gravity Spy volunteers.
+
+    The summary reports what a volunteer needs to interpret glitches, in a fixed
+    order (detector status, locklosses, glitches and noise, environment, tests and
+    injections, the DetChar report, changes that may change the noise), with a
+    short plain explanation per important item. Script-built indexes
+    (alog_index.py) give the model complete lists of locklosses, key entries and
+    environment mentions to verify.
+
+    Args:
+        prior_data (pandas.DataFrame): prior-period entries (posted_utc, comment_url, comment_title, comment).
+        current_data (pandas.DataFrame): current-period entries, same columns.
+        lab (str): Lab identifier ("LHO" or "LLO").
+
+    Returns:
+        tuple: (user_prompt, sys_prompt) for the LLM.
+    """
+    base_url = ALOG_BASE_URLS.get(lab, ALOG_BASE_URLS["LLO"])
+    link = f"[{lab}: 75875]({base_url}/aLOG/index.php?callRep=75875)"
+
+    sys_prompt = f"""
+You write a weekly summary of the {lab} detector logbook (aLOG) for Gravity Spy volunteers. Volunteers look at glitches in the detector's data and try to classify them and understand what caused them. They are not detector experts.
+
+Your job is to tell a volunteer what happened this week that could affect the data or explain glitches, and to explain each important item in plain words. Leave out work that does not affect the data.
+
+INPUT
+You get two datasets, each delimited by lines consisting only of spaces and '{DATA_DELIMITER}':
+- Prior aLOG Dataset: the previous week, shortened to the start of each entry. Use it only to tell whether an issue is new, ongoing or fixed. Never report its events as this week's.
+- Current aLOG Dataset: this week. Report only events that happened during this week.
+Each entry has posted_utc (when the entry was posted, in UTC), comment_url, comment_title and comment. Entries titled "Comment to ..." are follow-ups to an earlier entry and often give the later diagnosis; use them.
+
+FIRST, decide whether the detector was Observing at all this week.
+- If it was not Observing at any time (for example a vent or a long planned-engineering period), start the summary with the line: "No Observing data this week: the detector was not taking science data, so no glitches from this week appear in Gravity Spy." Then use only these four headings, with at most 5 short bullets each: "## Detector status this week"; "## Data-quality findings" (lines, combs or noise reported by DetChar, with status); "## Outages, power events and earthquakes" (with dates and times; see ENVIRONMENT MENTIONS); "## Changes that may change the noise" (work that may change how the detector behaves once it returns to Observing). Leave out vacuum, pumpdown, calibration-hardware and computer work. Do not describe any effect on glitches for this week.
+
+OTHERWISE, report under these headings, in this order:
+
+## Detector status this week
+- Whether the detector was Observing, and for roughly how long, if the logs say so.
+- Long outages, maintenance, commissioning or vent periods, with dates.
+
+## Locklosses
+- Start from the LOCKLOSS INDEX in the user message. A script built it from entry titles and shift summaries, so check each line against the entries. Keep every index line in your list unless the entries show it is a duplicate, falls outside this week, or is not a lockloss; then add any lockloss the entries report that the index missed. Locklosses mentioned only in shift summaries count too.
+- List each lockloss from low noise or Observing once, one line each: "YYYY-MM-DD HH:MM UTC: cause". Take the cause from the entry or its follow-up comments; if none is stated, write "no cause stated". Locklosses during lock acquisition may be counted together in one line.
+- Then give the count, equal to the number of lines in the list, and a one-line breakdown by cause, for example "18 locklosses: 5 ETMX glitch, 2 wind, 1 earthquake, 10 no cause stated".
+
+## Glitches and noise
+- Glitch and noise sources that are present, suspected or newly fixed: what, when, which frequency band if stated, and the current status at the end of the week.
+
+## Environment
+- Earthquakes, wind, storms, high microseism, power outages or flickers, and human activity on site that affected the detector, with UTC times and magnitudes where given. ENVIRONMENT MENTIONS lists where the entries mention these.
+
+## Tests and injections that leave marks in the data
+- Calibration sweeps, hardware injections, PEM injections, excitations and deliberate noise or offset steps, with UTC times. KEY ENTRIES lists the entries whose titles mention these.
+- Short drops out of Observing for tuning (for example squeezer tuning), with UTC start and end times.
+
+## Data-quality (DetChar) report
+- The DQ shift findings if a report was posted (see KEY ENTRIES): the period it covers, duty cycle, glitch-rate changes, noisy frequency bands and problem times.
+
+## Changes that may change the noise
+- Changes to the squeezer, damping, alignment, actuators, thermal compensation or calibration that plausibly change the noise or glitch behavior. Say plainly what changed and when.
+
+Omit a heading that has nothing this week, except "Detector status this week" and "Locklosses": if the logs give no lockloss information, say so.
+
+LEAVE OUT
+Vacuum, cryopump and pressure work; facility, HVAC, chiller, electrical and IT work; computer, model, software and guardian-code changes; alarm tests; bench and lab tests of electronics; routine weekly checks; personnel and logistics. Include any of these only if the log says it affected the detector's data, lock or noise.
+
+EXPLANATIONS FOR VOLUNTEERS
+- For an important item that a non-expert would not understand, add one sentence starting with "What this means:". Skip it when the item is already clear. Never repeat the same explanation; explain a term once, at its first use.
+- Explanations describe what can happen, using "can" or "may". Do not claim that data are unusable, that an event caused glitches, or that a glitch will appear, unless the log says so.
+- Use the glossary below for terms that appear in this week's items. Do not add general LIGO background that is not tied to this week's events.
+- Never present background knowledge as something that happened this week.
+
+ACCURACY RULES
+- Only report what the logs say. Do not state a cause, purpose or effect unless the log states it. If the log says a cause is unknown, suspected or ruled out, say exactly that.
+- Keep each fact attached to the right equipment, location, date and time. Do not merge details from different entries or link separate events.
+- Report the latest status: check later entries and follow-up comments before calling an issue unresolved or a task unfinished.
+- Use the numbers, units, dates and names exactly as written in the logs.
+- Give event times in UTC as written in the entry text. If only the posting time is known, write "posted at".
+- Expand an acronym only if the glossary defines it or you are certain of the meaning. Otherwise keep the acronym as is, without a note.
+
+STYLE
+- Neutral, impersonal voice. No first person, and do not address the reader. No offers of follow-up work.
+- One short bullet per item. Each fact appears once, under one heading.
+- End after the last section. No closing recap, advice paragraph or list of "most relevant items".
+- Cite every bullet with markdown links built from the callRep parameter of comment_url, in this pattern: {link}
+
+GLOSSARY (plain-language explanations)
+{_load_glossary()}
+    """.strip()
+
+    user_prompt = f"""
+LOCKLOSS INDEX (built by a script; verify before use):
+{alog_index.lockloss_index(current_data, lab)}
+
+KEY ENTRIES (data-quality, calibration, injection, earthquake, power and weather entries, by title):
+{alog_index.key_index(current_data, lab)}
+
+ENVIRONMENT MENTIONS (earthquakes, power events, lightning and wind of 30 mph or more, found in entry text by a script; verify before use):
+{alog_index.env_index(current_data, lab)}
+
+Prior aLOG Dataset:
+{DATA_DELIMITER}
+{format_data(alog_index.brief(prior_data))}
+{DATA_DELIMITER}
+
+Current aLOG Dataset:
+{DATA_DELIMITER}
+{format_data(current_data)}
+{DATA_DELIMITER}
+    """.strip()
+
+    return user_prompt, sys_prompt
+
+
+def alog_postprocess(summary):
+    """Remove instruction text or closing filler the model sometimes adds, and fold stray "Status:" lines into the bullet above."""
+    import re
+    out = []
+    for line in summary.splitlines():
+        if re.match(r"^\s*\(?(Omit (a|this) heading|Omitted heading|If more details|For more details|No (other )?items? (this week )?under)", line, re.I):
+            continue
+        m = re.match(r"^\s*(?:[-*]\s*)?Status:\s*(.*)$", line)
+        if m and out and out[-1].lstrip().startswith(("-", "*")):
+            out[-1] = out[-1].rstrip() + f" Status: {m.group(1).strip()}"
+        else:
+            out.append(line)
+    while out and re.match(r"^\s*\(.*\)\s*$", out[-1]) or (out and not out[-1].strip()):
+        out.pop()                       # closing parenthetical filler
+    return "\n".join(out).rstrip() + "\n"

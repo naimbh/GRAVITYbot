@@ -141,7 +141,7 @@ def _parse_rss_entry(entry, feed_url: str) -> dict | None:
         # Clean body text
         text = soup.get_text(separator=" ")
         text = re.sub(r"[\n\t]", " ", text)
-        text = re.sub(r"[,;]", "", text)
+        # Do not strip commas/semicolons: they separate values and list items ("0.5, 1.2 Hz")
         text = re.sub(r"^.*Report ID:\s*\d+\s*", "", text)
         text = re.sub(r"\s*Images attached to this report\s*", "", text)
         text = re.sub(r"\s+", " ", text).strip()

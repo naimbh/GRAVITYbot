@@ -9,6 +9,10 @@ import pathlib
 import dotenv
 
 # Load .env file
+# GRAVITYBOT_ENV_FILE points at another env file (e.g. a personal Azure account);
+# its values take precedence over the default .env.
+if os.environ.get("GRAVITYBOT_ENV_FILE"):
+    dotenv.load_dotenv(os.environ["GRAVITYBOT_ENV_FILE"], override=True)
 dotenv.load_dotenv(dotenv.find_dotenv())
 
 
@@ -52,7 +56,9 @@ AZURE_OPENAI_EMBEDDING_DEPLOYMENT = os.environ.get("AZURE_OPENAI_EMBEDDING_DEPLO
 # LLM Defaults
 # ---------------------
 LLM_TEMPERATURE = float(os.environ.get("GRAVITYBOT_LLM_TEMPERATURE", "0.8"))
-LLM_MAX_TOKENS = int(os.environ.get("GRAVITYBOT_LLM_MAX_TOKENS", "4096"))
+# Reasoning models (gpt-5 family) spend part of this budget on hidden reasoning;
+# below about 32000 the aLOG summary can come back empty.
+LLM_MAX_TOKENS = int(os.environ.get("GRAVITYBOT_LLM_MAX_TOKENS", "32000"))
 
 # ---------------------
 # Panoptes / Zooniverse

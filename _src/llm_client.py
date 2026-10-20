@@ -9,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import time
+
 import openai
 
 # Add project root to path for config import
@@ -89,13 +91,7 @@ class LLMClient:
         ]
         
         try:
-            response = self._client.chat.completions.create(
-                model=self._model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            result = response.choices[0].message.content
+            result = self._complete(messages, temperature, max_tokens)
         except openai.APIError as e:
             raise LLMError(f"Azure OpenAI API error: {e}") from e
         
@@ -136,13 +132,7 @@ class LLMClient:
         max_tokens = max_tokens if max_tokens is not None else config.LLM_MAX_TOKENS
         
         try:
-            response = self._client.chat.completions.create(
-                model=self._model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            result = response.choices[0].message.content
+            result = self._complete(messages, temperature, max_tokens)
         except openai.APIError as e:
             raise LLMError(f"Azure OpenAI API error: {e}") from e
         
@@ -155,6 +145,29 @@ class LLMClient:
         
         return result
     
+    def _complete(self, messages, temperature, max_tokens):
+        """
+        One chat completion, with the parameters the deployed model accepts.
+
+        Reasoning models (gpt-5, o1, o3, o4 families) reject a custom temperature and
+        use max_completion_tokens, which also covers their hidden reasoning tokens.
+        Rate-limit errors (HTTP 429, per-minute token quota) are retried after a pause.
+        """
+        kwargs = {"model": self._model, "messages": messages}
+        if self._model.replace("GravitySpy-", "").lower().startswith(("gpt-5", "o1", "o3", "o4")):
+            kwargs["max_completion_tokens"] = max_tokens
+        else:
+            kwargs["temperature"] = temperature
+            kwargs["max_tokens"] = max_tokens
+        for attempt in range(4):
+            try:
+                response = self._client.chat.completions.create(**kwargs)
+                return response.choices[0].message.content
+            except openai.RateLimitError:
+                if attempt == 3:
+                    raise
+                time.sleep(60)
+
     def _log_interaction(self, system_prompt: str, user_prompt: str, response: str, log_path: Path):
         """Write prompt/response to log file (overwrites)."""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

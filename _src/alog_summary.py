@@ -15,6 +15,7 @@ import sys
 
 import pandas as pd
 import pytz
+import re
 
 # Add project root to path for config import
 # TODO: Remove when proper packaging is implemented
@@ -42,7 +43,7 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------
 PERIOD_DAYS = 5
-GAP_DAYS = 1
+GAP_DAYS = 1  # prior period ends the day before the current one starts (periods are contiguous)
 
 RSS_URLS = {
     "LHO": "https://alog.ligo-wa.caltech.edu/aLOG/rss-feed.php",
@@ -105,8 +106,37 @@ def filter_by_date_range(df, start_date, end_date):
         Filtered DataFrame
     """
     start_dt = pytz.UTC.localize(datetime.datetime.strptime(start_date, "%Y-%m-%d"))
-    end_dt = pytz.UTC.localize(datetime.datetime.strptime(end_date, "%Y-%m-%d"))
-    return df[df["timestamp"].between(start_dt, end_dt)]
+    # end_date is inclusive: keep everything before midnight at the START of the following day.
+    # (Previously end_dt was midnight at the start of end_date, which dropped almost the whole final day.)
+    end_dt = pytz.UTC.localize(datetime.datetime.strptime(end_date, "%Y-%m-%d")) + datetime.timedelta(days=1)
+    return df[(df["timestamp"] >= start_dt) & (df["timestamp"] < end_dt)]
+
+
+def validate_citations(summary, allowed_ids, lab):
+    """
+    Check every aLOG citation in the summary against the entries actually given to the model.
+
+    A one-digit typo still links to a real but unrelated entry, so a link that "works" is not
+    evidence. Citations to IDs outside the input are replaced with a visible marker and logged.
+
+    Returns:
+        (checked_summary, list_of_unknown_ids)
+    """
+    allowed = {str(i) for i in allowed_ids}
+    unknown = []
+
+    def _check(match):
+        call_rep = match.group(2)
+        if call_rep in allowed:
+            return match.group(0)
+        unknown.append(call_rep)
+        return f"[{lab}: {call_rep} (citation not found in this period's aLOG data)]"
+
+    pattern = re.compile(r"\[([^\]]*?)\]\(https?://[^)]*?callRep=(\d+)[^)]*\)")
+    checked = pattern.sub(_check, summary)
+    if unknown:
+        logger.warning(f"{lab}: {len(unknown)} citation(s) not in input data: {sorted(set(unknown))}")
+    return checked, unknown
 
 
 def parse_alog_csv(file_path):
@@ -171,7 +201,9 @@ def summarize_lab(lab, data, date_ranges) -> str | None:
     Returns:
         Summary string if successful, None otherwise
     """
-    columns = ["comment_url", "comment_title", "comment"]
+    # The timestamp is passed to the model so it can place events in time and tell resolved issues from open ones
+    columns = ["posted_utc", "comment_url", "comment_title", "comment"]
+    data = data.assign(posted_utc=data["timestamp"].dt.strftime("%Y-%m-%d %H:%M UTC"))
     
     prior_data = filter_by_date_range(
         data, 
@@ -213,7 +245,13 @@ def summarize_lab(lab, data, date_ranges) -> str | None:
             system_prompt, 
             log_file=f"llm_alog_{lab.lower()}.log"
         )
+        if not summary or not summary.strip():
+            logger.error(f"{lab} summary generation returned no text (raise GRAVITYBOT_LLM_MAX_TOKENS for reasoning models)")
+            return None
+        summary = prompts.alog_postprocess(summary)
         logger.info(f"{lab} summary generated ({len(summary)} chars)")
+        allowed_ids = pd.concat([prior_data, current_data])["comment_url"].str.extract(r"callRep=(\d+)")[0].dropna()
+        summary, unknown = validate_citations(summary, allowed_ids, lab)
         return summary
         
     except llm_client.LLMError as e:
