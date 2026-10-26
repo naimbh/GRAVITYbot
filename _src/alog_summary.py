@@ -248,7 +248,9 @@ def summarize_lab(lab, data, date_ranges) -> str | None:
         if not summary or not summary.strip():
             logger.error(f"{lab} summary generation returned no text (raise GRAVITYBOT_LLM_MAX_TOKENS for reasoning models)")
             return None
-        summary = prompts.alog_postprocess(summary)
+        summary = prompts.alog_postprocess(
+            summary, period=f"{date_ranges['current_period_start']} to {date_ranges['current_period_end']}"
+        )
         logger.info(f"{lab} summary generated ({len(summary)} chars)")
         allowed_ids = pd.concat([prior_data, current_data])["comment_url"].str.extract(r"callRep=(\d+)")[0].dropna()
         summary, unknown = validate_citations(summary, allowed_ids, lab)

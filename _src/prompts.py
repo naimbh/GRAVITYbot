@@ -311,8 +311,9 @@ Current aLOG Dataset:
     return user_prompt, sys_prompt
 
 
-def alog_postprocess(summary):
-    """Remove instruction text or closing filler the model sometimes adds, and fold stray "Status:" lines into the bullet above."""
+def alog_postprocess(summary, period=None):
+    """Remove instruction text or closing filler the model sometimes adds, and fold stray "Status:" lines into the bullet above.
+    With period (e.g. "2025-07-12 to 2025-07-18"), the dates are added to the "Detector status this week" heading."""
     import re
     out = []
     for line in summary.splitlines():
@@ -325,4 +326,7 @@ def alog_postprocess(summary):
             out.append(line)
     while out and re.match(r"^\s*\(.*\)\s*$", out[-1]) or (out and not out[-1].strip()):
         out.pop()                       # closing parenthetical filler
-    return "\n".join(out).rstrip() + "\n"
+    text = "\n".join(out).rstrip() + "\n"
+    if period:
+        text = re.sub(r"^(#+\s*Detector status this week)\b[^\n]*$", lambda m: f"{m.group(1)} ({period})", text, flags=re.M)
+    return text
