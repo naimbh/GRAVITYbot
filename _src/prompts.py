@@ -313,6 +313,7 @@ Current aLOG Dataset:
 
 def alog_postprocess(summary, period=None):
     """Remove instruction text or closing filler the model sometimes adds, and fold stray "Status:" lines into the bullet above.
+    Bare citations ([LHO:85709]) become links to the aLOG entry.
     With period (e.g. "2025-07-12 to 2025-07-18"), the dates are added to the "Detector status this week" heading."""
     import re
     out = []
@@ -327,6 +328,12 @@ def alog_postprocess(summary, period=None):
     while out and re.match(r"^\s*\(.*\)\s*$", out[-1]) or (out and not out[-1].strip()):
         out.pop()                       # closing parenthetical filler
     text = "\n".join(out).rstrip() + "\n"
+    # Link bare citations such as [LHO:85709] or LHO:85709 to the aLOG entry, so readers can check them.
+    def _link(m):
+        site, rep = m.group(1).upper(), m.group(2)
+        return f"[{site}: {rep}]({ALOG_BASE_URLS[site]}/aLOG/index.php?callRep={rep})"
+    text = re.sub(r"\[(LHO|LLO):\s*(\d{4,6})\](?!\()", _link, text)
+    text = re.sub(r"(?<![\[\w/=])(LHO|LLO):\s?(\d{5,6})\b(?!\]|\))", _link, text)
     if period:
         text = re.sub(r"^(#+\s*Detector status this week)\b[^\n]*$", lambda m: f"{m.group(1)} ({period})", text, flags=re.M)
     return text
