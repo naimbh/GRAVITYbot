@@ -334,6 +334,33 @@ def alog_postprocess(summary, period=None):
         return f"[{site}: {rep}]({ALOG_BASE_URLS[site]}/aLOG/index.php?callRep={rep})"
     text = re.sub(r"\[(LHO|LLO):\s*(\d{4,6})\](?!\()", _link, text)
     text = re.sub(r"(?<![\[\w/=])(LHO|LLO):\s?(\d{5,6})\b(?!\]|\))", _link, text)
+    text = format_explanations(text)
     if period:
         text = re.sub(r"^(#+\s*Detector status this week)\b[^\n]*$", lambda m: f"{m.group(1)} ({period})", text, flags=re.M)
     return text
+
+
+def format_explanations(text):
+    """Put every "What this means:" on its own line under its item, with only the label underlined."""
+    import re
+    label = re.compile(r"(?<!<u>)\bWhat this means:")
+    bullet = re.compile(r"^(\s*)([-*]|\d+\.)\s+")
+    out = []
+    for line in text.split("\n"):
+        m = label.search(line)
+        if not m:
+            out.append(line)
+            continue
+        before, after = line[:m.start()], line[m.end():].strip()
+        b = bullet.match(line)
+        if before.strip() in ("", "-", "*"):          # already on its own line or written as a sub-bullet
+            indent = re.match(r"\s*", before).group(0)
+            if not indent and out and bullet.match(out[-1]):
+                bm = bullet.match(out[-1]); indent = bm.group(1) + " " * (len(bm.group(2)) + 1)
+            if out and out[-1].strip():
+                out[-1] = out[-1].rstrip() + "  "     # Markdown line break
+        else:                                           # inline after the item's text
+            indent = (b.group(1) + " " * (len(b.group(2)) + 1)) if b else re.match(r"\s*", line).group(0)
+            out.append(before.rstrip() + "  ")
+        out.append(f"{indent}<u>What this means:</u> {after}")
+    return "\n".join(out)

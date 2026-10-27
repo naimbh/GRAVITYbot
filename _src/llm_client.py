@@ -154,7 +154,7 @@ class LLMClient:
         Rate-limit errors (HTTP 429, per-minute token quota) are retried after a pause.
         """
         kwargs = {"model": self._model, "messages": messages}
-        if self._model.replace("GravitySpy-", "").lower().startswith(("gpt-5", "o1", "o3", "o4")):
+        if self._model.replace("GravitySpy-", "").lower().startswith(("gpt-5", "gpt-6", "o1", "o3", "o4")):
             kwargs["max_completion_tokens"] = max_tokens
         else:
             kwargs["temperature"] = temperature
