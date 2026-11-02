@@ -81,6 +81,31 @@ class TestAlogPromptUrls:
         assert 'ligo-la.caltech.edu' in sys_prompt
 
 
+class TestPromptTemplates:
+    """Tests for prompts.render() and the Markdown prompt files."""
+
+    def test_every_placeholder_filled(self):
+        """No {{name}} placeholder is left in any built prompt."""
+        import prompts
+
+        df = pd.DataFrame({'comment': ['test']})
+        built = [prompts.talk_prompt(df, df)]
+        for name in ('interface', 'volunteer', 'legacy'):
+            built.append(getattr(prompts, f'alog_prompt_{name}')(df, df, 'LHO'))
+        for user_prompt, sys_prompt in built:
+            assert '{{' not in user_prompt and '{{' not in sys_prompt
+
+    def test_missing_value_raises(self, tmp_path, monkeypatch):
+        """A placeholder with no value raises KeyError instead of sending it to the model."""
+        import prompts
+
+        (tmp_path / 'x.md').write_text('Hello {{lab}} and {{typo}}')
+        monkeypatch.setattr(prompts, 'PROMPTS_DIR', tmp_path)
+
+        with pytest.raises(KeyError, match='typo'):
+            prompts.render('x.md', lab='LHO')
+
+
 # ---------------------
 # Date range tests
 # ---------------------
