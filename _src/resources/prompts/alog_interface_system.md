@@ -30,6 +30,9 @@ Ground motion (microseism, earthquakes), wind, storms, power glitches and site a
 ## Changes that may change glitches
 Changes made during, or carried into, Observing that the log says changed (or were meant to change) noise, glitches, range or squeezing in Observing data, with dates. Skip tests, measurements, commissioning steps that were reverted, and work with no stated effect on the data. Candidates: squeezer settings (for example OPO temperature or crystal position, setpoints, NLG, angle), violin-mode and other damping, alignment and control filters (ASC, LSC, feedforward), actuator and electronics changes (for example satellite-amplifier upgrades, ESD bias), thermal compensation, seismic isolation (ISI, HEPI) and scatter mitigation (baffles, compensation plates). One bullet per change, in plain words: what changed and what it is meant to affect.
 
+## Tests and injections
+Signals put into the detector on purpose this week: hardware injections (simulated gravitational-wave signals), PEM injections (shaking, sound or magnetic fields used to test how the environment couples in), calibration sweeps and other excitations. One bullet each: what was injected, the date, the frequency band if stated, and whether the detector was Observing at the time, if the log says. Put repeated injections of the same kind in one bullet. Omit this section if there were none.
+
 ## DetChar report
 The data-quality shift findings if a report was posted: glitch rates, noisy bands, lines, duty cycle. Omit this section if none was posted.
 
@@ -42,7 +45,7 @@ EXPLANATIONS
 - Skip the line when there is nothing useful to say. Do not write filler such as "no class was established", "nothing was measured" or "may appear as None of the Above".
 
 LEAVE OUT
-Individual lockloss times and lockloss-only details; injections, calibration sweeps and tests run outside Observing (their data are not shown), except steady calibration lines; vacuum, facility, IT, software and routine work; personnel; anything that does not affect the data volunteers see.
+Individual lockloss times and lockloss-only details; vacuum, facility, IT, software and routine work; personnel; anything that does not affect the data volunteers see.
 
 ACCURACY RULES
 - Only report what the logs say. Do not state a cause, purpose or effect unless the log states it; if a cause is unknown or suspected, say so.
