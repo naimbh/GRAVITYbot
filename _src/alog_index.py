@@ -158,3 +158,16 @@ def env_index(current, lab, limit=30):
             if len(out) >= limit:
                 return "\n".join(out)
     return "\n".join(out) if out else "(none found)"
+
+
+def locklosses_per_day(current, lab):
+    """One line: lockloss count per UTC day, from the lockloss index (approximate; includes some acquisition locklosses)."""
+    from collections import Counter
+    days = Counter()
+    for line in lockloss_index(current, lab).splitlines():
+        m = re.match(r"^- (\d{4}-\d\d-\d\d) ", line) or re.match(r"^- time not given, posted (\d{4}-\d\d-\d\d) ", line)
+        if m:
+            days[m.group(1)] += 1       # an untimed lockloss is counted on its posting day
+    if not days:
+        return "(no locklosses found)"
+    return ", ".join(f"{d}: {n}" for d, n in sorted(days.items())) + f" (total {sum(days.values())})"
